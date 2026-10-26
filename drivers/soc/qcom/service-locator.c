@@ -31,7 +31,7 @@
 #define LOCATOR_NOT_PRESENT	0
 #define LOCATOR_PRESENT		1
 
-static u32 locator_status = LOCATOR_NOT_PRESENT;
+static u32 locator_status = LOCATOR_PRESENT;
 static bool service_inited;
 
 module_param_named(enable, locator_status, uint, 0644);
