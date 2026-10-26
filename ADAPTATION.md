@@ -60,3 +60,19 @@ Toolchain: Android clang r563880c (or a matching clang/LLD 21).
   vangogh DTB); the device tree packaging rules live in the device repository.
 - Recovery/kernel bring-up switches (`vangogh.*`) are optional and only used by
   development images.
+
+## Status / known issues
+
+Working: the 4.19.325 image boots Android 16, with display/AOD, touch,
+fingerprint, Wi-Fi, audio, charging and OTA updates.
+
+Known limitations:
+
+- Vendor 4.19.325 tree; no newer stable/upstream merges.
+- `vangogh_419_defconfig` is the known-good configuration extracted from the
+  working boot image; keep it in sync with the userspace/HAL expectations.
+- The FOD z-order plane extension is supported and required by userspace
+  (`TARGET_USES_FOD_ZPOS=true` in the device tree).
+- `vangogh.*` command-line switches used during bring-up are development-only.
+- The 5.10 kernel port (experimental) is maintained separately and is not part
+  of this branch.
