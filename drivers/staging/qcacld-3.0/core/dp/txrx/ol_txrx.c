@@ -905,7 +905,14 @@ ol_txrx_pdev_attach(ol_txrx_soc_handle soc,
 		pdev->sec_types[i] = (enum ol_sec_type)i;
 
 	TXRX_STATS_INIT(pdev);
+#if defined(FEATURE_TSO) && !defined(FEATURE_TSO_DEBUG)
+	/* vangogh: TSO stats lock is used by ol_tx_tso_get_stats_idx() but
+	 * ol_txrx_tso_stats_init() is a no-op unless FEATURE_TSO_DEBUG is set.
+	 * Initialize it whenever FEATURE_TSO is enabled. */
+	qdf_spinlock_create(&pdev->stats.pub.tx.tso.tso_stats_lock);
+#else
 	ol_txrx_tso_stats_init(pdev);
+#endif
 	ol_txrx_fw_stats_desc_pool_init(pdev, FW_STATS_DESC_POOL_SIZE);
 
 	TAILQ_INIT(&pdev->vdev_list);
@@ -991,7 +998,11 @@ fail2:
 fail1:
 	qdf_spinlock_destroy(&pdev->req_list_spinlock);
 	qdf_spinlock_destroy(&pdev->tx_mutex);
+#if defined(FEATURE_TSO) && !defined(FEATURE_TSO_DEBUG)
+	qdf_spinlock_destroy(&pdev->stats.pub.tx.tso.tso_stats_lock);
+#else
 	ol_txrx_tso_stats_deinit(pdev);
+#endif
 	ol_txrx_fw_stats_desc_pool_deinit(pdev);
 	qdf_mem_free(pdev);
 
@@ -1831,7 +1842,11 @@ static QDF_STATUS ol_txrx_pdev_detach(struct cdp_soc_t *soc_hdl, uint8_t pdev_id
 
 	htt_pdev_free(pdev->htt_pdev);
 	ol_txrx_peer_find_detach(pdev);
+#if defined(FEATURE_TSO) && !defined(FEATURE_TSO_DEBUG)
+	qdf_spinlock_destroy(&pdev->stats.pub.tx.tso.tso_stats_lock);
+#else
 	ol_txrx_tso_stats_deinit(pdev);
+#endif
 	ol_txrx_fw_stats_desc_pool_deinit(pdev);
 
 	ol_txrx_pdev_txq_log_destroy(pdev);
