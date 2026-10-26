@@ -520,7 +520,11 @@
 	};
 
 	chosen {
-		bootargs = "rcupdate.rcu_expedited=1 rcu_nocbs=0-7 noirqdebug";
+		/* Use normal RCU grace periods after boot instead of permanent
+		 * expedited GPs (the 23.2 default sends IPIs to all CPUs on every
+		 * grace period, which is harmful under sustained WiFi load).
+		 */
+		bootargs = "rcu_nocbs=0-7 rcupdate.rcu_normal_after_boot=1 noirqdebug";
 	};
 
 	soc: soc { };
