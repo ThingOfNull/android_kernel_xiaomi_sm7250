@@ -84,8 +84,9 @@ static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_lock);
 static struct wakeup_source *fp_wakelock = NULL;
 static struct gf_dev gf;
+extern int fpsensor;
 
-struct gf_key_map maps[] = {
+struct gf_key_map maps_ta[] = {
 	{ EV_KEY, GF_KEY_INPUT_HOME },
 	{ EV_KEY, GF_KEY_INPUT_MENU },
 	{ EV_KEY, GF_KEY_INPUT_BACK },
@@ -336,39 +337,6 @@ static void nav_event_input(struct gf_dev *gf_dev, gf_nav_event_t nav_event)
 	}
 }
 
-
-static void gf_kernel_key_input(struct gf_dev *gf_dev, struct gf_key *gf_key)
-{
-	uint32_t key_input = 0;
-
-	if (GF_KEY_HOME == gf_key->key) {
-		key_input = GF_KEY_INPUT_HOME;
-	} else if (GF_KEY_POWER == gf_key->key) {
-		key_input = GF_KEY_INPUT_POWER;
-	} else if (GF_KEY_CAMERA == gf_key->key) {
-		key_input = GF_KEY_INPUT_CAMERA;
-	} else {
-		/* add special key define */
-		key_input = gf_key->key;
-	}
-
-	pr_debug("%s: received key event[%d], key=%d, value=%d\n",
-		 __func__, key_input, gf_key->key, gf_key->value);
-
-	if ((GF_KEY_POWER == gf_key->key || GF_KEY_CAMERA == gf_key->key)
-		&& (gf_key->value == 1)) {
-		input_report_key(gf_dev->input, key_input, 1);
-		input_sync(gf_dev->input);
-		input_report_key(gf_dev->input, key_input, 0);
-		input_sync(gf_dev->input);
-	}
-
-	if (GF_KEY_HOME == gf_key->key) {
-		input_report_key(gf_dev->input, key_input, gf_key->value);
-		input_sync(gf_dev->input);
-	}
-}
-
 static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct gf_dev *gf_dev = &gf;
@@ -430,18 +398,9 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 		case GF_IOC_RESET:
 			pr_debug("%s GF_IOC_RESET.\n", __func__);
-			gf_hw_reset(gf_dev, 3);
+			gf_hw_reset_ta(gf_dev, 3);
 			break;
 
-		case GF_IOC_INPUT_KEY_EVENT:
-			if (copy_from_user(&gf_key, (struct gf_key *)arg, sizeof(struct gf_key))) {
-				pr_debug("Failed to copy input key event from user to kernel\n");
-				retval = -EFAULT;
-				break;
-			}
-
-			gf_kernel_key_input(gf_dev, &gf_key);
-			break;
 #if defined(SUPPORT_NAV_EVENT)
 
 		case GF_IOC_NAV_EVENT:
@@ -475,7 +434,7 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			if (gf_dev->device_available == 1) {
 				pr_debug("Sensor has already powered-on.\n");
 			} else {
-				gf_power_on(gf_dev);
+				gf_power_on_ta(gf_dev);
 			}
 
 			gf_dev->device_available = 1;
@@ -487,7 +446,7 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			if (gf_dev->device_available == 0) {
 				pr_debug("Sensor has already powered-off.\n");
 			} else {
-				gf_power_off(gf_dev);
+				gf_power_off_ta(gf_dev);
 			}
 
 			gf_dev->device_available = 0;
@@ -553,7 +512,7 @@ static irqreturn_t gf_irq(int irq, void *handle)
 	pr_debug("%s enter\n", __func__);
 	if(fp_wakelock != NULL)
 		__pm_wakeup_event(fp_wakelock, WAKELOCK_HOLD_TIME);
-	sendnlmsg(temp);
+	sendnlmsg_ta(temp);
 
 	if ((gf_dev->wait_finger_down == true) && (gf_dev->device_available == 1) &&
 		(gf_dev->fb_black == 1)) {
@@ -619,16 +578,6 @@ static int gf_open(struct inode *inode, struct file *filp)
 #endif
 
 	if (status == 0) {
-#ifdef GF_PW_CTL
-		rc = gpio_request(gf_dev->pwr_gpio, "goodix_pwr");
-
-		if (rc) {
-			dev_err(&gf_dev->spi->dev, "Failed to request PWR GPIO. rc = %d\n", rc);
-			mutex_unlock(&device_list_lock);
-			err = -EPERM;
-			goto open_error1;
-		}
-#endif
 
 		rc = gpio_request(gf_dev->reset_gpio, "gpio-reset");
 
@@ -723,10 +672,7 @@ static int gf_release(struct inode *inode, struct file *filp)
 		free_irq(gf_dev->irq, gf_dev);
 		gpio_free(gf_dev->irq_gpio);
 		gpio_free(gf_dev->reset_gpio);
-		gf_power_off(gf_dev);
-#ifdef GF_PW_CTL
-		gpio_free(gf_dev->pwr_gpio);
-#endif
+		gf_power_off_ta(gf_dev);
 	}
 
 	mutex_unlock(&device_list_lock);
@@ -778,7 +724,7 @@ static int goodix_fb_state_chg_callback(struct notifier_block *nb,
 					gf_dev->wait_finger_down = true;
 #if defined(GF_NETLINK_ENABLE)
 					temp[0] = GF_NET_EVENT_FB_BLACK;
-					sendnlmsg(temp);
+					sendnlmsg_ta(temp);
 #elif defined (GF_FASYNC)
 
 					if (gf_dev->async) {
@@ -794,7 +740,7 @@ static int goodix_fb_state_chg_callback(struct notifier_block *nb,
 					gf_dev->fb_black = 0;
 #if defined(GF_NETLINK_ENABLE)
 					temp[0] = GF_NET_EVENT_FB_UNBLACK;
-					sendnlmsg(temp);
+					sendnlmsg_ta(temp);
 #elif defined (GF_FASYNC)
 
 					if (gf_dev->async) {
@@ -848,7 +794,7 @@ static int gf_probe(struct platform_device *pdev)
 	INIT_WORK(&gf_dev->work, notification_work);
 #endif
 
-	if (gf_parse_dts(gf_dev)) {
+	if (gf_parse_dts_ta(gf_dev)) {
 		goto error_hw;
 	}
 
@@ -890,8 +836,8 @@ static int gf_probe(struct platform_device *pdev)
 			goto error_dev;
 		}
 
-		for (i = 0; i < ARRAY_SIZE(maps); i++) {
-			input_set_capability(gf_dev->input, maps[i].type, maps[i].code);
+		for (i = 0; i < ARRAY_SIZE(maps_ta); i++) {
+			input_set_capability(gf_dev->input, maps_ta[i].type, maps_ta[i].code);
 		}
 
 		gf_dev->input->name = GF_INPUT_NAME;
@@ -921,7 +867,7 @@ static int gf_probe(struct platform_device *pdev)
 	gf_dev->notifier = goodix_noti_block;
 	mi_drm_register_client(&gf_dev->notifier);
 #endif
-	gf_dev->irq = gf_irq_num(gf_dev);
+	gf_dev->irq = gf_irq_num_ta(gf_dev);
         fp_wakelock = wakeup_source_register(&gf_dev->spi->dev, "fp_wakelock");
 	if(fp_wakelock==NULL)
 		goto error_wakelock;
@@ -955,7 +901,7 @@ error_dev:
 	}
 
 error_hw:
-	gf_cleanup(gf_dev);
+	gf_cleanup_ta(gf_dev);
 	gf_dev->device_available = 0;
 	return status;
 }
@@ -987,7 +933,7 @@ static int gf_remove(struct platform_device *pdev)
 	clear_bit(MINOR(gf_dev->devt), minors);
 
 	if (gf_dev->users == 0) {
-		gf_cleanup(gf_dev);
+		gf_cleanup_ta(gf_dev);
 	}
 
 #ifndef GOODIX_DRM_INTERFACE_WA
@@ -1023,6 +969,11 @@ static int __init gf_init(void)
 	 * that will key udev/mdev to add/remove /dev nodes.  Last, register
 	 * the driver which manages those device numbers.
 	 */
+	if(fpsensor != 2){
+    	pr_err("Macle goodix_ta failed as fpsensor=%d(2=goodix_ta)\n", fpsensor);
+        return -1;
+	}
+
 	BUILD_BUG_ON(N_SPI_MINORS > 256);
 	status = register_chrdev(SPIDEV_MAJOR, CHRD_DRIVER_NAME, &gf_fops);
 
@@ -1053,7 +1004,7 @@ static int __init gf_init(void)
 	}
 
 #ifdef GF_NETLINK_ENABLE
-	netlink_init();
+	netlink_init_ta();
 #endif
 	pr_debug("status = 0x%x\n", status);
 	return 0;
@@ -1063,7 +1014,7 @@ module_init(gf_init);
 static void __exit gf_exit(void)
 {
 #ifdef GF_NETLINK_ENABLE
-	netlink_exit();
+	netlink_exit_ta();
 #endif
 #if defined(USE_PLATFORM_BUS)
 	platform_driver_unregister(&gf_driver);
