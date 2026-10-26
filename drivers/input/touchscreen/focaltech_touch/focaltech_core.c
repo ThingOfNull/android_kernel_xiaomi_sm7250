@@ -722,6 +722,10 @@ static int fts_read_and_report_foddata(struct fts_ts_data *data)
 		 * */
 		switch (buf[2]) {
 		case 0x24:
+			if (!fts_gesture_is_enabled()) {
+				FTS_INFO("gesture disabled, ignore double tap wakeup\n");
+				break;
+			}
 			FTS_INFO("DoubleClick Gesture detected, Wakeup panel\n");
 			input_report_key(data->input_dev, KEY_WAKEUP, 1);
 			input_sync(data->input_dev);
@@ -2572,7 +2576,7 @@ static int fts_ts_suspend(struct device *dev)
 			goto sleep_mode;
 		}
 
-		fts_gesture_reg_write(ts_data->client, FTS_REG_GESTURE_DOUBLETAP_ON, true);
+		ret = fts_gesture_reg_write(ts_data->client, FTS_REG_GESTURE_DOUBLETAP_ON, true);
 		if (ret < 0) {
 			FTS_ERROR("%s fts_gesture_reg_write failed, enter sleep mode!\n", __func__);
 			goto sleep_mode;

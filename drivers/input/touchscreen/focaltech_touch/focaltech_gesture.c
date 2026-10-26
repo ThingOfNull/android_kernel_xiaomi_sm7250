@@ -224,6 +224,11 @@ void fts_gesture_enable(bool enable)
 	mutex_unlock(&input_dev->mutex);
 }
 
+bool fts_gesture_is_enabled(void)
+{
+	return fts_gesture_data.mode != DISABLE;
+}
+
 /************************************************************************
 * Name: fts_gesture_buf_show
 *  Brief:
