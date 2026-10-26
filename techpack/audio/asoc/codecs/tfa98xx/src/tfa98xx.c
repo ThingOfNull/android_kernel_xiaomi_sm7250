@@ -49,6 +49,17 @@
 
 #include "spk-id.h"
 
+/* [lineage-23.2 bring-up] 前置声明。原代码把 extern 放到 1021 行，
+ * 但 813/864 就已经调用，新 clang 对隐式声明直接 -Werror。
+ * 这里提前声明，避免 implicit-function-declaration。
+ */
+#ifdef TFA_NON_DSP_SOLUTION
+extern int send_tfa_cal_apr(void *buf, int cmd_size, bool bRead);
+#else
+/* dummy prototype，实际定义仍在 1023 行 */
+int send_tfa_cal_apr(void *buf, int cmd_size, bool bRead);
+#endif
+
 #define TFA98XX_VERSION	TFA98XX_API_REV_STR
 
 #define I2C_RETRIES 50
