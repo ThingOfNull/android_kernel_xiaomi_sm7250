@@ -259,6 +259,16 @@ struct lockdep_map rcu_sched_lock_map =
 	STATIC_LOCKDEP_MAP_INIT("rcu_read_lock_sched", &rcu_sched_lock_key);
 EXPORT_SYMBOL_GPL(rcu_sched_lock_map);
 
+/* [lineage-23.2 bring-up] 5.10+ kernel 新增，用于 rcu_read_lock_trace() 的 lockdep
+ * annotation。bpf/trampoline.c 里 rcu_read_{lock,unlock}_trace 会引用这个符号；
+ * 此 4.19 kernel 只留了 include/linux/rcupdate_trace.h 里的 extern 声明而没有本体，
+ * 导致链接失败。此处补上实体（参考上面几个 rcu_*_lock_map 的写法）。
+ */
+static struct lock_class_key rcu_trace_lock_key;
+struct lockdep_map rcu_trace_lock_map =
+	STATIC_LOCKDEP_MAP_INIT("rcu_read_lock_trace", &rcu_trace_lock_key);
+EXPORT_SYMBOL_GPL(rcu_trace_lock_map);
+
 static struct lock_class_key rcu_callback_key;
 struct lockdep_map rcu_callback_map =
 	STATIC_LOCKDEP_MAP_INIT("rcu_callback", &rcu_callback_key);

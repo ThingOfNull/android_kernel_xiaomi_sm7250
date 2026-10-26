@@ -4005,7 +4005,11 @@ void lock_release(struct lockdep_map *lock, unsigned long ip)
 	check_flags(flags);
 	current->lockdep_recursion = 1;
 	trace_lock_release(lock, ip);
-	if (__lock_release(lock, nested, ip))
+	/* [lineage-23.2 bring-up] upstream 将 lock_release() 签名从
+	 * (lock, nested, ip) 改成 (lock, ip)，但 lineage-23.0 kernel 忘了同步更新
+	 * 内部调用。__lock_release() 仍然需要 int nested，这里硬编码 2（与上游修复一致）。
+	 */
+	if (__lock_release(lock, 2, ip))
 		check_chain_key(current);
 	current->lockdep_recursion = 0;
 	raw_local_irq_restore(flags);
