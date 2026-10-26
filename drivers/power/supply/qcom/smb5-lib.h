@@ -175,6 +175,12 @@ enum esr_work_status {
 #define QC_CLASS_A_CURRENT_UA           3600000
 #define HVDCP_CLASS_A_MAX_UA            2500000
 #define HVDCP_CLASS_A_FOR_CP_UA         2200000
+/* defined for super charger mode (also needed by SMB1398_CHARGER) */
+#define SUPER_CHARGER_DELAY_MS		3000
+#define SUPER_CHARGER_COUNT		103
+#define HVDCP3p5_NORMAL_CURRENT_UA	3600000
+#define PD2_FCC_UA			3550000
+#define PD3_FCC_UA			3600000
 #else
 #define VOL_THR_FOR_QC_CLASS_AB			12500000
 #define MAX_PULSE			30
