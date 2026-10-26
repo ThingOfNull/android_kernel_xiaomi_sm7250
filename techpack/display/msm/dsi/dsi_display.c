@@ -7,6 +7,7 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/err.h>
+#include <linux/string.h>
 #include <drm/drm_notifier_mi.h>
 
 #include "msm_drv.h"
@@ -14,6 +15,7 @@
 #include "msm_mmu.h"
 #include "dsi_display.h"
 #include "dsi_panel.h"
+#include "dsi_mi_feature.h"
 #include "dsi_ctrl.h"
 #include "dsi_ctrl_hw.h"
 #include "dsi_drm.h"
@@ -208,6 +210,31 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 		return -EINVAL;
 
 	panel = dsi_display->panel;
+
+	/*
+	 * AOSP doze writes the doze screen brightness through the normal
+	 * backlight device. While an MI feature panel is in LP1/LP2,
+	 * translate it into the MIUI AOD HBM/LBM command sets; otherwise
+	 * the DCS 0x51 write below would overwrite the AOD luminance or
+	 * leave the panel at the screen-off brightness. Panels without
+	 * MIUI feature support keep the normal backlight path.
+	 */
+	if (panel->mi_cfg.mi_feature_enabled && panel->mi_cfg.in_aod &&
+	    !panel->mi_cfg.fod_hbm_enabled) {
+		u32 brightness = 0;
+
+		if (panel->bl_config.bl_max_level)
+			brightness = mult_frac(bl_lvl, 255,
+					       panel->bl_config.bl_max_level);
+
+		if (brightness > MI_AOD_LBM_MAX_BRIGHTNESS)
+			return dsi_panel_set_doze_brightness(panel,
+					DOZE_BRIGHTNESS_HBM, true);
+		if (brightness)
+			return dsi_panel_set_doze_brightness(panel,
+					DOZE_BRIGHTNESS_LBM, true);
+		/* brightness == 0: blank the panel through the normal path */
+	}
 
 	mutex_lock(&panel->panel_lock);
 	if (!dsi_panel_initialized(panel)) {
@@ -1079,6 +1106,16 @@ int dsi_display_set_power(struct drm_connector *connector,
 		mi_cfg->in_aod = true;
 		mi_drm_notifier_call_chain(MI_DRM_EARLY_EVENT_BLANK, &notify_data);
 		rc = dsi_panel_set_lp1(display->panel);
+		if (!rc && mi_cfg->mi_feature_enabled &&
+		    !mi_cfg->unset_doze_brightness &&
+		    mi_cfg->doze_brightness_state == DOZE_TO_NORMAL) {
+			/*
+			 * AOSP doze has no MIUI displayfeature HAL to program
+			 * the first AOD frame. Default to LBM so that LP1/LP2
+			 * does not inherit the screen-off backlight (usually 0).
+			 */
+			mi_cfg->unset_doze_brightness = DOZE_BRIGHTNESS_LBM;
+		}
 		if (mi_cfg->unset_doze_brightness)
 			dsi_panel_set_doze_brightness(display->panel,
 				mi_cfg->unset_doze_brightness, true);
@@ -1088,6 +1125,16 @@ int dsi_display_set_power(struct drm_connector *connector,
 		mi_cfg->in_aod = true;
 		mi_drm_notifier_call_chain(MI_DRM_EARLY_EVENT_BLANK, &notify_data);
 		rc = dsi_panel_set_lp2(display->panel);
+		if (!rc && mi_cfg->mi_feature_enabled &&
+		    !mi_cfg->unset_doze_brightness &&
+		    mi_cfg->doze_brightness_state == DOZE_TO_NORMAL) {
+			/*
+			 * AOSP doze has no MIUI displayfeature HAL to program
+			 * the first AOD frame. Default to LBM so that LP1/LP2
+			 * does not inherit the screen-off backlight (usually 0).
+			 */
+			mi_cfg->unset_doze_brightness = DOZE_BRIGHTNESS_LBM;
+		}
 		if (mi_cfg->unset_doze_brightness)
 			dsi_panel_set_doze_brightness(display->panel,
 				mi_cfg->unset_doze_brightness, true);
@@ -5147,8 +5194,63 @@ static DEVICE_ATTR(fod_ui, 0444,
 			sysfs_fod_ui_read,
 			NULL);
 
+/*
+ * Sunlight/HBM control for LineageOS LiveDisplay.
+ *
+ * The MI panel driver already implements normal HBM (mi,mdss-dsi-hbm-on/off
+ * command, up to 700nit on the J9 panel). Expose it as a simple 0/1 sysfs
+ * node so vendor.lineage.livedisplay-service.sysfs can drive
+ * ISunlightEnhancement without going through the fingerprint FOD path.
+ */
+static ssize_t sysfs_hbm_read(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct dsi_display *display;
+
+	display = dev_get_drvdata(dev);
+	if (!display || !display->panel) {
+		pr_err("Invalid display/panel\n");
+		return -EINVAL;
+	}
+
+	return snprintf(buf, PAGE_SIZE, "%d\n",
+			display->panel->mi_cfg.hbm_enabled);
+}
+
+static ssize_t sysfs_hbm_write(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct dsi_display *display;
+	bool enable;
+	int rc;
+
+	display = dev_get_drvdata(dev);
+	if (!display || !display->panel) {
+		pr_err("Invalid display/panel\n");
+		return -EINVAL;
+	}
+
+	rc = kstrtobool(buf, &enable);
+	if (rc)
+		return rc;
+
+	rc = dsi_panel_set_disp_param(display->panel,
+			enable ? DISPPARAM_HBM_ON : DISPPARAM_HBM_OFF);
+	if (rc) {
+		pr_err("failed to set hbm %d, rc=%d\n", enable, rc);
+		return rc;
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR(hbm, 0660,
+			sysfs_hbm_read,
+			sysfs_hbm_write);
+
 static struct attribute *display_fs_attrs[] = {
 	&dev_attr_fod_ui.attr,
+	&dev_attr_hbm.attr,
 	NULL,
 };
 

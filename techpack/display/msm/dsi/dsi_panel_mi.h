@@ -42,6 +42,15 @@ enum doze_bkl {
 	DOZE_BRIGHTNESS_LBM,
 };
 
+/*
+ * Upper bound of Android brightness (0..255) that MIUI maps to AOD LBM.
+ * The official vangogh framework uses config_screenBrightnessSettingMinimum=10
+ * and maps exactly that level to DOZE_BRIGHTNESS_LBM; doze buckets below it
+ * are clamped to the same minimum. AOSP doze can feed 2/5 directly, so treat
+ * everything up to this bound as LBM.
+ */
+#define MI_AOD_LBM_MAX_BRIGHTNESS 10
+
 enum bkl_dimming_state {
 	STATE_NONE,
 	STATE_DIM_BLOCK,
